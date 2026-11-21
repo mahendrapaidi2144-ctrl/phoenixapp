@@ -25,3 +25,41 @@ jobs:
 
        - name: run tests
          run: pytest -v tests
+
+  build-scan:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - component: backend
+            context: .
+            dockerfile: Dockerfile
+          - component: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image name and immutable tag
+        id: meta
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$owner/phoenix-${{ matrix.component }}" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg APP_VERSION=${{ steps.meta.outputs.tag }} \
+            --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
+            -t ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }} \
+            -f ${{ matrix.dockerfile }} ${{ matrix.context }}
+
+      - name: Trivy scan (fail on fixable CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --severity CRITICAL --ignore-unfixed --no-progress \
+            --exit-code ${{ vars.TRIVY_EXIT_CODE || '1' }} \
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
