@@ -26,7 +26,7 @@ jobs:
        - name: run tests
          run: pytest -v tests
 
-  build-scan:
+   build-scan:
     needs: test
     runs-on: ubuntu-latest
     strategy:
