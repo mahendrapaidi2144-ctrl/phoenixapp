@@ -63,3 +63,28 @@ jobs:
             --severity CRITICAL --ignore-unfixed --no-progress \
             --exit-code ${{ vars.TRIVY_EXIT_CODE || '1' }} \
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+      
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push and capture digest
+        if: github.event_name != 'pull_request'
+        id: push
+        run: |
+          ref=${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          docker push "$ref"
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$ref" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "### ${{ matrix.component }}: \`$ref@$digest\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Export image reference
+        if: github.event_name != 'pull_request'
+        id: ref
+        run: |
+          echo "${{ matrix.component }}_image=${{ steps.meta.outputs.image }}" >> "$GITHUB_OUTPUT"
+          echo "${{ matrix.component }}_tag=${{ steps.meta.outputs.tag }}@${{ steps.push.outputs.digest }}" >> "$GITHUB_OUTPUT"
